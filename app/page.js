@@ -70,6 +70,7 @@ export default function Home() {
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null); // chat object
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   const endRef = useRef(null);
   const renameDone = useRef(false);
@@ -102,6 +103,7 @@ export default function Home() {
       if (e.key === "Escape") {
         setMenu(null);
         setConfirmDelete(null);
+        setConfirmLogout(false);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -352,7 +354,7 @@ export default function Home() {
 
         <div className="side-bottom">
           <span className="user-name" title={user.email}>{user.name}</span>
-          <button className="logout" onClick={logout}>Log out</button>
+          <button className="logout" onClick={() => setConfirmLogout(true)}>Log out</button>
         </div>
       </aside>
 
@@ -449,6 +451,33 @@ export default function Home() {
             <div className="modal-actions">
               <button className="btn-cancel" autoFocus onClick={() => setConfirmDelete(null)}>Cancel</button>
               <button className="btn-delete" onClick={deleteChat}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Log out confirmation box */}
+      {confirmLogout && (
+        <div className="modal-backdrop" onClick={() => setConfirmLogout(false)}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="out-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="out-title">Log out?</h2>
+            <p>Are you sure you want to log out? Your chats are saved and will be here when you log back in.</p>
+            <div className="modal-actions">
+              <button className="btn-cancel" autoFocus onClick={() => setConfirmLogout(false)}>Cancel</button>
+              <button
+                className="btn-confirm"
+                onClick={() => {
+                  setConfirmLogout(false);
+                  logout();
+                }}
+              >
+                Log out
+              </button>
             </div>
           </div>
         </div>
