@@ -1,6 +1,8 @@
 import bcrypt from "bcryptjs";
 import { sql, ensureSchema } from "@/lib/db";
-import { createSession, authConfigured } from "@/lib/auth";
+import { authConfigured } from "@/lib/auth";
+import { mailConfigured } from "@/lib/mail";
+import { issueCode } from "@/lib/verification";
 import { limited, clientIp } from "@/lib/ratelimit";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -9,6 +11,12 @@ export async function POST(req) {
   if (!authConfigured()) {
     return Response.json(
       { error: "Server is missing AUTH_SECRET (at least 16 characters). Add it in Vercel and redeploy." },
+      { status: 500 }
+    );
+  }
+  if (!mailConfigured()) {
+    return Response.json(
+      { error: "Email verification is not set up yet. Add SMTP_USER and SMTP_PASS in Vercel and redeploy." },
       { status: 500 }
     );
   }
@@ -35,16 +43,36 @@ export async function POST(req) {
 
   try {
     await ensureSchema();
-    const existing = await sql`SELECT id FROM users WHERE email = ${email}`;
-    if (existing.length > 0) {
-      return Response.json({ error: "An account with this email already exists. Please log in." }, { status: 409 });
-    }
     const hash = await bcrypt.hash(password, 10);
-    const rows = await sql`
-      INSERT INTO users (name, email, password_hash) VALUES (${name}, ${email}, ${hash})
-      RETURNING id, name, email`;
-    await createSession(rows[0].id);
-    return Response.json({ user: rows[0] });
+    const existing = await sql`SELECT id, email_verified FROM users WHERE email = ${email}`;
+
+    let userId;
+    if (existing.length > 0) {
+      if (existing[0].email_verified) {
+        return Response.json({ error: "An account with this email already exists. Please log in." }, { status: 409 });
+      }
+      // Registered earlier but never verified: let them start again with new details.
+      await sql`UPDATE users SET name = ${name}, password_hash = ${hash} WHERE id = ${existing[0].id}`;
+      userId = existing[0].id;
+    } else {
+      const rows = await sql`
+        INSERT INTO users (name, email, password_hash, email_verified)
+        VALUES (${name}, ${email}, ${hash}, false) RETURNING id`;
+      userId = rows[0].id;
+    }
+
+    try {
+      await issueCode(userId, email);
+    } catch (err) {
+      console.error("Verification email error:", err?.message);
+      return Response.json(
+        { error: "We could not send the verification email. Check the email address and try again." },
+        { status: 502 }
+      );
+    }
+
+    // No login yet: the user must verify the email first.
+    return Response.json({ needsVerification: true, email });
   } catch (err) {
     console.error("Signup error:", err?.message);
     return Response.json(

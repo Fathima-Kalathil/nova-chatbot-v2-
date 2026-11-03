@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { sql, ensureSchema } from "@/lib/db";
 import { createSession, authConfigured } from "@/lib/auth";
+import { issueCode } from "@/lib/verification";
 import { limited, clientIp } from "@/lib/ratelimit";
 
 export async function POST(req) {
@@ -29,12 +30,27 @@ export async function POST(req) {
 
   try {
     await ensureSchema();
-    const rows = await sql`SELECT id, name, email, password_hash FROM users WHERE email = ${email}`;
+    const rows = await sql`
+      SELECT id, name, email, password_hash, email_verified FROM users WHERE email = ${email}`;
     const user = rows[0];
     const ok = user ? await bcrypt.compare(password, user.password_hash) : false;
     if (!ok) {
       return Response.json({ error: "Incorrect email or password." }, { status: 401 });
     }
+
+    // Correct password but the email was never verified: send a fresh code and ask for it.
+    if (!user.email_verified) {
+      try {
+        await issueCode(user.id, user.email);
+      } catch (err) {
+        console.error("Verification email error:", err?.message);
+      }
+      return Response.json(
+        { error: "Please verify your email to continue.", needsVerification: true, email: user.email },
+        { status: 403 }
+      );
+    }
+
     await createSession(user.id);
     return Response.json({ user: { id: user.id, name: user.name, email: user.email } });
   } catch (err) {

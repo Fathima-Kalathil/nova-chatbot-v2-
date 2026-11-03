@@ -25,6 +25,10 @@ export default function AuthForm({ mode }) {
         body: JSON.stringify({ name, email, password }),
       });
       const data = await res.json();
+      if (data.needsVerification) {
+        router.replace(`/verify?email=${encodeURIComponent(data.email || email)}`);
+        return;
+      }
       if (!res.ok) {
         setError(data.error || "Something went wrong. Please try again.");
         setBusy(false);
