@@ -55,6 +55,33 @@ function DotsIcon() {
   );
 }
 
+function SearchIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+// Shows text with the searched word highlighted.
+function Highlight({ text, query }) {
+  if (!query) return text;
+  const lower = text.toLowerCase();
+  const q = query.toLowerCase();
+  const parts = [];
+  let i = 0;
+  for (;;) {
+    const j = lower.indexOf(q, i);
+    if (j === -1) break;
+    if (j > i) parts.push(text.slice(i, j));
+    parts.push(<mark key={j}>{text.slice(j, j + q.length)}</mark>);
+    i = j + q.length;
+  }
+  parts.push(text.slice(i));
+  return <>{parts}</>;
+}
+
 export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -71,6 +98,10 @@ export default function Home() {
   const [renameValue, setRenameValue] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null); // chat object
   const [confirmLogout, setConfirmLogout] = useState(false);
+
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState(null); // { q, items } from the server
+  const [searching, setSearching] = useState(false);
 
   const endRef = useRef(null);
   const renameDone = useRef(false);
@@ -110,6 +141,33 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Search message text on the server, 300 ms after the user stops typing.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setFound(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+        if (res.status === 401) return router.replace("/login");
+        if (res.ok) setFound({ q, items: (await res.json()).results });
+      } catch {
+        // cancelled or network error: keep showing the title matches
+      } finally {
+        if (!ctrl.signal.aborted) setSearching(false);
+      }
+    }, 300);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [query, router]);
+
   function newChat() {
     setActiveId(null);
     setMessages([]);
@@ -140,6 +198,11 @@ export default function Home() {
     } finally {
       setOpening(false);
     }
+  }
+
+  function openFromSearch(id) {
+    setQuery("");
+    openChat(id);
   }
 
   // ----- 3-dots menu -----
@@ -275,6 +338,14 @@ export default function Home() {
     return <div className="boot">Loading Nova...</div>;
   }
 
+  const q = query.trim();
+  const localMatches = q
+    ? chats
+        .filter((c) => c.title.toLowerCase().includes(q.toLowerCase()))
+        .map((c) => ({ id: c.id, title: c.title, pinned: c.pinned, snippet: null }))
+    : [];
+  const results = found && found.q === q ? found.items : localMatches;
+
   const pinned = chats.filter((c) => c.pinned);
   const others = chats.filter((c) => !c.pinned);
 
@@ -333,21 +404,62 @@ export default function Home() {
             <span>Nova</span>
           </div>
           <button className="new-chat" onClick={newChat}>+ New chat</button>
+          <div className="search">
+            <span className="search-icon"><SearchIcon /></span>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && setQuery("")}
+              placeholder="Search chats"
+              aria-label="Search chats"
+              maxLength={100}
+            />
+            {query && (
+              <button className="search-clear" aria-label="Clear search" onClick={() => setQuery("")}>✕</button>
+            )}
+          </div>
         </div>
 
-        <nav className="chat-list" aria-label="Your chats">
-          {chats.length === 0 && <p className="side-empty">Your chats will appear here.</p>}
-
-          {pinned.length > 0 && (
+        <nav className="chat-list" aria-label={q ? "Search results" : "Your chats"}>
+          {q ? (
             <>
-              <p className="group-label">Pinned</p>
-              {pinned.map(renderItem)}
+              {searching && <p className="search-status">Searching messages...</p>}
+              {!searching && results.length === 0 && (
+                <p className="side-empty">{q.length < 2 ? "Keep typing to search messages." : `No chats found for "${q}".`}</p>
+              )}
+              {results.map((r) => (
+                <div
+                  key={r.id}
+                  className="chat-item result"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openFromSearch(r.id)}
+                  onKeyDown={(e) => e.key === "Enter" && openFromSearch(r.id)}
+                >
+                  <div className="result-body">
+                    <span className="chat-title"><Highlight text={r.title} query={q} /></span>
+                    {r.snippet && <span className="result-snippet"><Highlight text={r.snippet} query={q} /></span>}
+                  </div>
+                </div>
+              ))}
             </>
-          )}
-          {others.length > 0 && (
+          ) : (
             <>
-              {pinned.length > 0 && <p className="group-label">Chats</p>}
-              {others.map(renderItem)}
+              {chats.length === 0 && <p className="side-empty">Your chats will appear here.</p>}
+
+              {pinned.length > 0 && (
+                <>
+                  <p className="group-label">Pinned</p>
+                  {pinned.map(renderItem)}
+                </>
+              )}
+              {others.length > 0 && (
+                <>
+                  {pinned.length > 0 && <p className="group-label">Chats</p>}
+                  {others.map(renderItem)}
+                </>
+              )}
             </>
           )}
         </nav>
