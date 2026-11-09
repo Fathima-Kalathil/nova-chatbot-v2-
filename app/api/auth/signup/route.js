@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { sql, ensureSchema } from "@/lib/db";
-import { authConfigured } from "@/lib/auth";
+import { authConfigured, setVerifyTicket } from "@/lib/auth";
 import { mailConfigured } from "@/lib/mail";
 import { issueCode } from "@/lib/verification";
 import { limited, clientIp } from "@/lib/ratelimit";
@@ -20,7 +20,7 @@ export async function POST(req) {
       { status: 500 }
     );
   }
-  if (limited(`signup:${clientIp(req)}`, 5, 60 * 60 * 1000)) {
+  if (await limited(`signup:${clientIp(req)}`, 5, 60 * 60 * 1000)) {
     return Response.json({ error: "Too many sign-ups from this network. Try again later." }, { status: 429 });
   }
 
@@ -32,13 +32,14 @@ export async function POST(req) {
   }
 
   const name = String(body.name || "").trim().slice(0, 60);
-  const email = String(body.email || "").trim().toLowerCase();
+  const email = String(body.email || "").trim().toLowerCase().slice(0, 254);
   const password = String(body.password || "");
 
   if (!name) return Response.json({ error: "Please enter your name." }, { status: 400 });
   if (!EMAIL_RE.test(email)) return Response.json({ error: "Please enter a valid email." }, { status: 400 });
-  if (password.length < 8 || password.length > 100) {
-    return Response.json({ error: "Password must be 8 to 100 characters." }, { status: 400 });
+  // bcrypt only uses the first 72 bytes, so longer passwords would be silently cut.
+  if (password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
+    return Response.json({ error: "Password must be between 8 and 72 characters." }, { status: 400 });
   }
 
   try {
@@ -61,10 +62,11 @@ export async function POST(req) {
       userId = rows[0].id;
     }
 
-    try {
-      await issueCode(userId, email);
-    } catch (err) {
-      console.error("Verification email error:", err?.message);
+    // bind: only THIS browser gets the ticket needed to finish verification, so someone else
+    // who signs up with the same email cannot hijack the account when the real owner enters a code.
+    const result = await issueCode(userId, email, { bind: true });
+    await setVerifyTicket(userId, result.nonce);
+    if (result.mailError) {
       return Response.json(
         { error: "We could not send the verification email. Check the email address and try again." },
         { status: 502 }

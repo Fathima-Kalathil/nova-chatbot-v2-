@@ -8,7 +8,7 @@ export async function GET(req) {
   const user = await getSessionUser();
   if (!user) return Response.json({ error: "Not logged in." }, { status: 401 });
 
-  if (limited(`search:${user.id}`, 60, 60 * 1000)) {
+  if (await limited(`search:${user.id}`, 60, 60 * 1000)) {
     return Response.json({ error: "Too many searches. Slow down for a moment." }, { status: 429 });
   }
 

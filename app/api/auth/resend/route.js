@@ -7,7 +7,7 @@ export async function POST(req) {
   if (!mailConfigured()) {
     return Response.json({ error: "Email verification is not set up on the server." }, { status: 500 });
   }
-  if (limited(`resend:${clientIp(req)}`, 10, 60 * 60 * 1000)) {
+  if (await limited(`resend:${clientIp(req)}`, 10, 60 * 60 * 1000)) {
     return Response.json({ error: "Too many requests. Try again later." }, { status: 429 });
   }
 
@@ -18,7 +18,7 @@ export async function POST(req) {
     return Response.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const email = String(body.email || "").trim().toLowerCase();
+  const email = String(body.email || "").trim().toLowerCase().slice(0, 254);
   if (!email) return Response.json({ error: "Enter your email." }, { status: 400 });
 
   try {
@@ -34,6 +34,9 @@ export async function POST(req) {
         { error: `Please wait ${result.wait} seconds before asking for another code.`, wait: result.wait },
         { status: 429 }
       );
+    }
+    if (result.mailError) {
+      return Response.json({ error: "We could not send the email. Please try again." }, { status: 502 });
     }
     return Response.json({ ok: true });
   } catch (err) {

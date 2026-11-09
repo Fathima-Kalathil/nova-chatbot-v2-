@@ -69,9 +69,10 @@ export default function AuthForm({ mode }) {
             onChange={(e) => setPassword(e.target.value)}
             autoComplete={isSignup ? "new-password" : "current-password"}
             minLength={isSignup ? 8 : undefined}
+            maxLength={72}
             required
           />
-          {isSignup && <span className="hint">At least 8 characters.</span>}
+          {isSignup && <span className="hint">8 to 72 characters.</span>}
         </label>
 
         {error && <p className="auth-error" role="alert">{error}</p>}

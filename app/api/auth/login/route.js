@@ -1,8 +1,11 @@
 import bcrypt from "bcryptjs";
 import { sql, ensureSchema } from "@/lib/db";
-import { createSession, authConfigured } from "@/lib/auth";
+import { createSession, authConfigured, setVerifyTicket } from "@/lib/auth";
 import { issueCode } from "@/lib/verification";
 import { limited, clientIp } from "@/lib/ratelimit";
+
+// Compared against when the email does not exist, so that "no such user" takes as long as "wrong password".
+const DUMMY_HASH = bcrypt.hashSync("nova-not-a-real-password", 10);
 
 export async function POST(req) {
   if (!authConfigured()) {
@@ -11,7 +14,7 @@ export async function POST(req) {
       { status: 500 }
     );
   }
-  if (limited(`login:${clientIp(req)}`, 15, 15 * 60 * 1000)) {
+  if (await limited(`login:${clientIp(req)}`, 15, 15 * 60 * 1000)) {
     return Response.json({ error: "Too many attempts. Try again in a few minutes." }, { status: 429 });
   }
 
@@ -22,10 +25,15 @@ export async function POST(req) {
     return Response.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const email = String(body.email || "").trim().toLowerCase();
-  const password = String(body.password || "");
+  const email = String(body.email || "").trim().toLowerCase().slice(0, 254);
+  const password = String(body.password || "").slice(0, 200);
   if (!email || !password) {
     return Response.json({ error: "Enter your email and password." }, { status: 400 });
+  }
+
+  // Limit guesses against ONE account even when they come from many different IP addresses.
+  if (await limited(`login-acct:${email}`, 20, 15 * 60 * 1000)) {
+    return Response.json({ error: "Too many attempts for this account. Try again in a few minutes." }, { status: 429 });
   }
 
   try {
@@ -33,18 +41,15 @@ export async function POST(req) {
     const rows = await sql`
       SELECT id, name, email, password_hash, email_verified FROM users WHERE email = ${email}`;
     const user = rows[0];
-    const ok = user ? await bcrypt.compare(password, user.password_hash) : false;
-    if (!ok) {
+    const match = await bcrypt.compare(password, user ? user.password_hash : DUMMY_HASH);
+    if (!user || !match) {
       return Response.json({ error: "Incorrect email or password." }, { status: 401 });
     }
 
     // Correct password but the email was never verified: send a fresh code and ask for it.
     if (!user.email_verified) {
-      try {
-        await issueCode(user.id, user.email);
-      } catch (err) {
-        console.error("Verification email error:", err?.message);
-      }
+      const result = await issueCode(user.id, user.email, { bind: true });
+      await setVerifyTicket(user.id, result.nonce);
       return Response.json(
         { error: "Please verify your email to continue.", needsVerification: true, email: user.email },
         { status: 403 }

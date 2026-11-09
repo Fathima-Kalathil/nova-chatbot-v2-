@@ -15,7 +15,7 @@ export async function POST(req) {
   }
 
   // 30 messages per user per hour, to protect the free API quota.
-  if (limited(`chat:${user.id}`, 30, 60 * 60 * 1000)) {
+  if (await limited(`chat:${user.id}`, 30, 60 * 60 * 1000)) {
     return Response.json({ error: "Message limit reached. Please try again in an hour." }, { status: 429 });
   }
 
