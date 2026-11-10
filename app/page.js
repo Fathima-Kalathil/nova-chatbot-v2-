@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 const SUGGESTIONS = [
   "Explain React hooks simply",
@@ -466,6 +467,7 @@ export default function Home() {
 
         <div className="side-bottom">
           <span className="user-name" title={user.email}>{user.name}</span>
+          <Link href="/settings" className="logout">Settings</Link>
           <button className="logout" onClick={() => setConfirmLogout(true)}>Log out</button>
         </div>
       </aside>

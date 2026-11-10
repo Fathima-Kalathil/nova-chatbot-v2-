@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-export default function AuthForm({ mode }) {
+export default function AuthForm({ mode, notice = "" }) {
   const isSignup = mode === "signup";
   const router = useRouter();
   const [name, setName] = useState("");
@@ -75,6 +75,10 @@ export default function AuthForm({ mode }) {
           {isSignup && <span className="hint">8 to 72 characters.</span>}
         </label>
 
+        {!isSignup && (
+          <p className="forgot-link"><Link href="/forgot">Forgot password?</Link></p>
+        )}
+        {notice && !error && <p className="auth-ok" role="status">{notice}</p>}
         {error && <p className="auth-error" role="alert">{error}</p>}
 
         <button type="submit" className="primary" disabled={busy}>

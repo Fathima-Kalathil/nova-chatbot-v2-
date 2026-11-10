@@ -4,8 +4,7 @@ import { authConfigured, setVerifyTicket } from "@/lib/auth";
 import { mailConfigured } from "@/lib/mail";
 import { issueCode } from "@/lib/verification";
 import { limited, clientIp } from "@/lib/ratelimit";
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { EMAIL_RE, passwordError, cleanName } from "@/lib/validate";
 
 export async function POST(req) {
   if (!authConfigured()) {
@@ -31,16 +30,14 @@ export async function POST(req) {
     return Response.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const name = String(body.name || "").trim().slice(0, 60);
+  const name = cleanName(body.name);
   const email = String(body.email || "").trim().toLowerCase().slice(0, 254);
   const password = String(body.password || "");
 
   if (!name) return Response.json({ error: "Please enter your name." }, { status: 400 });
   if (!EMAIL_RE.test(email)) return Response.json({ error: "Please enter a valid email." }, { status: 400 });
-  // bcrypt only uses the first 72 bytes, so longer passwords would be silently cut.
-  if (password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
-    return Response.json({ error: "Password must be between 8 and 72 characters." }, { status: 400 });
-  }
+  const pwError = passwordError(password);
+  if (pwError) return Response.json({ error: pwError }, { status: 400 });
 
   try {
     await ensureSchema();

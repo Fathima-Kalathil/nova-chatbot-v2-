@@ -1,4 +1,4 @@
-# Nova chatbot (v7: secured - login with email OTP, saved chats, pin / rename / delete, search)
+# Nova chatbot (v8: secured - email OTP, forgot / change password, account settings, saved chats, pin / rename / delete, search)
 
 Next.js chatbot with sign up / log in, a ChatGPT-style sidebar of saved chats, a free LLM API (Groq by default) and a free Neon Postgres database. Deploys free on Vercel.
 
@@ -28,3 +28,8 @@ Connect a Neon Postgres database from the Vercel Storage tab. Tables are created
 - Every database query is parameterized and scoped to the logged-in user.
 - Rate limits are stored in the database, so they hold across all serverless instances.
 - Cross-site write requests are blocked (middleware.js) and security headers are set (next.config.mjs).
+
+## Account features (v8)
+- Forgot password: /forgot sends a 6-digit code by email, /reset sets a new password and logs out every device.
+- Settings (/settings): change name, change password, log out of all devices, delete account (asks for the password).
+- A "password changed" email is sent after every reset or change.

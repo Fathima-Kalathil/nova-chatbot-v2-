@@ -25,6 +25,11 @@ export async function POST(req) {
     return Response.json({ error: "Enter the 6-digit code from your email." }, { status: 400 });
   }
 
+  // However many IP addresses are used, one account only gets a limited number of code guesses per hour.
+  if (await limited(`code-acct:${email}`, 15, 60 * 60 * 1000)) {
+    return Response.json({ error: "Too many attempts for this account. Try again later." }, { status: 429 });
+  }
+
   try {
     await ensureSchema();
     const users = await sql`SELECT id, name, email, email_verified FROM users WHERE email = ${email}`;
