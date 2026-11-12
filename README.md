@@ -1,4 +1,4 @@
-# Nova chatbot (v8: secured - email OTP, forgot / change password, account settings, saved chats, pin / rename / delete, search)
+# Nova chatbot (v9: security-reviewed - email OTP, forgot / change password, account settings, saved chats, pin / rename / delete, search)
 
 Next.js chatbot with sign up / log in, a ChatGPT-style sidebar of saved chats, a free LLM API (Groq by default) and a free Neon Postgres database. Deploys free on Vercel.
 
